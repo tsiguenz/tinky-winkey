@@ -1,6 +1,7 @@
 Vagrant.configure("2") do |config|
 
-  config.vm.synced_folder '.', '/vagrant', disabled: true
+  # For WSL
+  # config.vm.synced_folder '.', '/vagrant', disabled: true
   config.vm.define "win11", primary: true do |win11|
     win11.vm.box = "gusztavvargadr/windows-11"
     win11.vm.hostname = "win11"
@@ -16,6 +17,8 @@ Vagrant.configure("2") do |config|
     vb.cpus = 4
     vb.memory = "8192"
     vb.customize ["modifyvm", :id, "--vram", "256"]
-    vb.customize ["modifyvm", :id, "--accelerate-3d", "on"]
+    vb.customize ['modifyvm', :id, '--clipboard-mode', 'bidirectional']
   end
+
+  config.vm.provision "shell", path: "dependencies.ps1", privileged: true
 end
