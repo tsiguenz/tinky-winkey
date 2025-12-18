@@ -2,6 +2,7 @@ Vagrant.configure("2") do |config|
 
   # For WSL
   config.vm.synced_folder '.', '/vagrant', disabled: true
+
   config.vm.define "win11", primary: true do |win11|
     win11.vm.box = "gusztavvargadr/windows-11"
     win11.vm.hostname = "win11"

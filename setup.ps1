@@ -91,12 +91,14 @@ if (-not (Test-Path $settingsDir)) {
     New-Item -ItemType Directory -Path $settingsDir -Force
 }
 
+$vcvarsPath = "C:\\Program^ Files^ ^(x86^)\\Microsoft^ Visual^ Studio\\2022\\BuildTools\\VC\\auxiliary\\Build\\vcvars64.bat"
+
 $settings = @"
 {
     "terminal.integrated.profiles.windows": {
         "Developer Command Prompt": {
             "path": "C:\\Windows\\System32\\cmd.exe",
-            "args": ["/k", "$vsPath"],
+            "args": ["/k", "$vcvarsPath"],
             "icon": "terminal-cmd"
         }
     },
