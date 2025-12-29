@@ -1,26 +1,22 @@
 NAME = svc.exe
 CC = cl
-FLAGS = /Wall /WX /std:c++17
-
-OBJ_PATH = obj/
+FLAGS = /nologo /Wall /WX /std:c++17 /EHsc
 SRC = main.cpp
-
-OBJ = $(SRC:.cpp=.o)
+OBJ = $(SRC:.cpp=.obj)
 
 all: $(NAME)
-	cl /Wall /WX $(NAME)
 
 $(NAME): $(OBJ)
-	$(CC) $(FLAGS) $(OBJ) -o $(NAME)
+	link /nologo $(OBJ) -out:$(NAME)
 
-$(OBJ): $(SRC)
-	$(CC) $(FLAGS) -c $< -o $@
+.cpp.obj:
+	$(CC) $(FLAGS) /c $< /Fo:$@
 
 clean:
-	del /QF $(OBJ)
+	del /Q /F $(OBJ) 2>nul
 
 fclean: clean
-	del /QF $(NAME)
+	del /Q /F $(NAME) 2>nul
 
 re: fclean all
 
