@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <cwchar>
 #include <cstdio>
+#include <iostream>
 
 #define SVCNAME L"tinky"
 
@@ -26,6 +27,72 @@ VOID SvcInit(DWORD, LPWSTR*);
 void SvcReportEvent(const wchar_t*);
 void LogEvent(const wchar_t*);
 
+// TOKEN IMPERSONATION*************************
+#include <tlhelp32.h>
+
+HANDLE GetSystemTokenFromWinlogon()
+{
+    // Our aim is to get the PID of winlogon to retrieve its token
+    DWORD pid = 0;
+
+    // 1. Find winlogon.exe
+    // Takes a snapshot of the system current processes
+    // the option TH32CS_SNAPPROCESS tells to take all the processes
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+
+    // PROCESSENTRY32 is awindows structure that contains a process information
+    // we have to precise the size according to windows
+    PROCESSENTRY32 pe{ sizeof(pe) };
+
+    // to parse the snapshot by each process
+    // Proces32First is called once, Process32Next is called for remaining iterations
+    for (Process32First(snap, &pe); Process32Next(snap, &pe); )
+    {
+        // _wcsicmp = Wide Char String – Case Insensitive Compare from Windows
+        if (_wcsicmp(pe.szExeFile, L"winlogon.exe") == 0)
+        {
+            pid = pe.th32ProcessID;
+            break;
+        }
+    }
+    CloseHandle(snap);
+
+    // if winlogon not found
+    if (!pid) return NULL;
+
+    // 2. Open process SYSTEM
+    HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!hProc) return NULL;
+
+    // 3. Open its token
+    HANDLE hToken = NULL;
+    if (!OpenProcessToken(hProc, TOKEN_DUPLICATE | TOKEN_QUERY, &hToken))
+    {
+        CloseHandle(hProc);
+        return NULL;
+    }
+
+    CloseHandle(hProc);
+    return hToken;
+}
+
+bool ImpersonateSystem(HANDLE hDupToken)
+{
+    // Checcks if the impresonated token still exists
+    if (!hDupToken)
+        return false;
+
+    // Set the thread token to the duplicated one from impersonation
+    if (!SetThreadToken(NULL, hDupToken))
+    {
+        std::cerr << "SetThreadToken failed: " << GetLastError() << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
+
 void SvcReportEvent(const wchar_t* msg)
 {
     wprintf(L"%s\n", msg);
@@ -33,12 +100,17 @@ void SvcReportEvent(const wchar_t* msg)
 
 void LogEvent(const wchar_t* msg)
 {
-    const wchar_t* logPath = L"C:\\Windows\\tmp\\winkey.log"; // sûr pour LocalSystem
+    const wchar_t* logPath = L"C:\\Windows\\Temp\\winkey.log";
     FILE* f = nullptr;
-    if (_wfopen_s(&f, logPath, L"a+") == 0) {
-        fwprintf(f, L"%s\n", msg);
-        fclose(f);
+    errno_t err = _wfopen_s(&f, logPath, L"a+");
+    if (err != 0 || f == nullptr) {
+        wchar_t buf[256];
+        swprintf_s(buf, L"Failed to open log file, errno=%d, GetLastError=%lu", err, GetLastError());
+        OutputDebugStringW(buf); // can see that with DebugView
+        return;
     }
+    fwprintf(f, L"%s\n", msg);
+    fclose(f);
 }
 
 //
@@ -85,15 +157,56 @@ VOID SvcInit( DWORD dwArgc, LPWSTR *lpszArgv)
 
     ReportSvcStatus( SERVICE_RUNNING, NO_ERROR, 0 );
 
+    // token duplication and impersonation
+    HANDLE hTokenDup = nullptr;
+    HANDLE hToken = GetSystemTokenFromWinlogon();
+    if (hToken)
+    {
+        DuplicateTokenEx(
+            hToken,
+            TOKEN_IMPERSONATE | TOKEN_QUERY,
+            nullptr,
+            SecurityImpersonation,
+            TokenImpersonation,
+            &hTokenDup
+        );
+        CloseHandle(hToken);
+    }
+
+    if (!hTokenDup)
+    {
+        LogEvent(L"Failed to get SYSTEM token");
+        ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
+        return;
+    }
+
     // TO_DO: Perform work until service stops.
 
     int counter = 0;
     while(WaitForSingleObject(ghSvcStopEvent, 1000) == WAIT_TIMEOUT)
     {
-        // Check whether to stop the service every 1000ms, reads WAIT_TIMEOUT if no stop
-        // do work
         counter++;
-        wprintf(L"Service running: %d seconds\n", counter);
+        // Check whether to stop the service every 1000ms, reads WAIT_TIMEOUT if no stop
+
+        // guarantees that the following work is executed under the impersonated token
+        if (!ImpersonateSystem(hTokenDup))
+            continue; // failure -> go to next iteration
+
+        // __try and __finally are Windows extensions called SEH (Structured Exception Handling)
+        // they are an equivalent to try catch
+        __try
+        {
+            // Code under the impersonated token (should be SYSTEM from winlogon)
+            wchar_t buf[128];
+            swprintf_s(buf, L"Service running since %d seconds", counter);
+            LogEvent(buf);
+        }
+        __finally
+        {
+            // It HAS to be done under any circumstancces
+            RevertToSelf();
+        }
+
     }
     wchar_t buf[128];
     swprintf_s(buf, L"Service stopped after %d seconds", counter);
@@ -223,7 +336,7 @@ int wmain()
 {
     SERVICE_TABLE_ENTRYW table[] =
     {
-        { (LPWSTR)L"Winkey", SvcMain },
+        { (LPWSTR)L"tinky", SvcMain },
         { nullptr, nullptr }
     };
 
