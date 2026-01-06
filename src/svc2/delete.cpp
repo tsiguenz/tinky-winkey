@@ -26,6 +26,7 @@ int ActionDelete(void)
         Cleanup(scm, serviceHandle);
         return returnValue;
     }
+    // TODO : check if running to stop before deleting
     if (!DeleteService(serviceHandle)) {
         std::cerr << "Fail to delete service\n";
         returnValue = 1;

@@ -4,6 +4,8 @@
 
 #define WIN32_LEAN_AND_MEAN // reduce size of the windows headers
 #define NOMINMAX
+#define _UNICODE
+#define UNICODE
 #include <windows.h>
 
 #include <iostream>
