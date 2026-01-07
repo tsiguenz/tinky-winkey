@@ -22,6 +22,7 @@
 SERVICE_STATUS gSvcStatus{};
 SERVICE_STATUS_HANDLE gSvcStatusHandle = nullptr;
 HANDLE ghSvcStopEvent = nullptr;
+HANDLE hwinkey = nullptr;
 
 VOID WINAPI SvcCtrlHandler(DWORD);
 VOID ReportSvcStatus(DWORD, DWORD, DWORD);
@@ -193,7 +194,7 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
 
     BOOL bResult = CreateProcessAsUserW(
         hTokenDup,
-        L"C:\\Users\\vagrant\\Documents\\process.exe",
+        L"C:\\vagrant\\src\\process.exe",
         nullptr,
         nullptr,
         nullptr,
@@ -205,7 +206,7 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
         &pi);
 
     RevertToSelf();
-
+    hwinkey = pi.hProcess;
     if (bResult == 0)
     {
         wchar_t buf[256];
@@ -313,6 +314,10 @@ VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
     {
         ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
+        if (hwinkey != nullptr) {
+            if (TerminateProcess(hwinkey, 0) == 0)
+                LogEvent(L"Error while terminating the process winkey!");
+        }
         // Signal the service to stop.
 
         SetEvent(ghSvcStopEvent);
