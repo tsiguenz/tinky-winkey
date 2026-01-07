@@ -10,7 +10,6 @@
     - use more cpp
         - use strings
         - remove c open
-    - change path to work everywhere
 
 3. Create Vagrantfile to deploy Windows 11 VM
     - `gusztavvargadr/windows-11`
