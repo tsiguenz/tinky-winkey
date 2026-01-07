@@ -5,7 +5,7 @@ CC = cl
 LINK = link
 
 CFLAGS = /nologo /Wall /WX /std:c++17 /EHsc /Wv:18
-LDFLAGS = /nologo advapi32.lib
+LDFLAGS = /nologo
 
 # ========================
 # Output

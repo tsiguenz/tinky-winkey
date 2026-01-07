@@ -194,7 +194,7 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
 
     BOOL bResult = CreateProcessAsUserW(
         hTokenDup,
-        L"C:\\vagrant\\src\\process.exe",
+        L"C:\\Users\\tinky\\Documents\\src\\process.exe",
         nullptr,
         nullptr,
         nullptr,
@@ -206,13 +206,13 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
         &pi);
 
     RevertToSelf();
-    hwinkey = pi.hProcess;
     if (bResult == 0)
     {
         wchar_t buf[256];
         swprintf_s(buf, L"Failed to create, GetLastError=%lu", GetLastError());
         LogEvent(buf);
     }
+    hwinkey = pi.hProcess;
     // success
     // if (bResult && pi.hProcess != INVALID_HANDLE_VALUE)
     // {

@@ -13,7 +13,7 @@ int ActionInstall(void)
     }
 
     LPCWSTR serviceName = L"tinky";
-    LPCWSTR serviceBinaryPath = L"C:\\Users\\vagrant\\Documents\\winkey.exe";
+    LPCWSTR serviceBinaryPath = L"C:\\Users\\tinky\\Documents\\src\\winkey.exe";
 
     // Install the service into SCM by calling CreateService
     serviceHandle = CreateService(scm, // SCManager database
