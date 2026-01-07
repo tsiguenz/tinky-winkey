@@ -1,4 +1,5 @@
 #include "svc.h"
+#include <filesystem>
 
 int ActionInstall(void)
 {
@@ -13,18 +14,18 @@ int ActionInstall(void)
         return 1;
     }
 
-    LPCWSTR serviceName = L"tinky";
-    LPCWSTR serviceBinaryPath = L"C:\\vagrant\\src\\tinky.exe";
+    std::wstring serviceName = L"tinky";
+    std::wstring serviceBinaryPath = std::wstring(std::filesystem::current_path()) + L"\\" + L"tinky.exe";
 
     // Install the service into SCM by calling CreateService
     serviceHandle = CreateService(scm,                       // SCManager database
-                                  serviceName,               // Name of service
-                                  serviceName,               // Name to display
+                                  serviceName.data(),        // Name of service
+                                  serviceName.data(),        // Name to display
                                   SERVICE_ALL_ACCESS,        // Desired access
                                   SERVICE_WIN32_OWN_PROCESS, // Service type
                                   SERVICE_DEMAND_START,      // Service start type
                                   SERVICE_ERROR_NORMAL,      // Error control type
-                                  serviceBinaryPath,         // Service's binary
+                                  serviceBinaryPath.data(),  // Service's binary
                                   nullptr,                   // No load ordering group
                                   nullptr,                   // No tag identifier
                                   nullptr,                   // Dependencies

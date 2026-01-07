@@ -10,11 +10,11 @@ all:
 	cd $(SVC_DIR) && $(MAKE) $(MAKE_FLAG)
 	cd $(TINKY_DIR) && $(MAKE) $(MAKE_FLAG)
 	cd $(WINKEY_DIR) && $(MAKE) $(MAKE_FLAG)
-	if exist $(SVC) $(SVC) install
-	if exist $(SVC) $(SVC) start
+	-if exist $(SVC) $(SVC) install
+	-if exist $(SVC) $(SVC) start
 
 clean:
-	if exist $(SVC) $(SVC) delete 
+	-if exist $(SVC) $(SVC) delete 
 	del /Q /F $(WINKEY_LOG_FILE)
 	cd $(SVC_DIR) && $(MAKE) $(MAKE_FLAG) clean
 	cd $(TINKY_DIR) && $(MAKE) $(MAKE_FLAG) clean
@@ -25,10 +25,7 @@ fclean: clean
 	cd $(TINKY_DIR) && $(MAKE) $(MAKE_FLAG) fclean
 	cd $(WINKEY_DIR) && $(MAKE) $(MAKE_FLAG) fclean
 	
-re:
-	cd $(SVC_DIR) && $(MAKE) $(MAKE_FLAG) re
-	cd $(TINKY_DIR) && $(MAKE) $(MAKE_FLAG) re
-	cd $(WINKEY_DIR) && $(MAKE) $(MAKE_FLAG) re
+re: fclean all
 
 log:
 	type $(WINKEY_LOG_FILE)

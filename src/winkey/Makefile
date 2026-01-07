@@ -1,4 +1,4 @@
-NAME = ..\winkey.exe
+NAME = C:\Windows\Temp\winkey.exe
 CC = cl
 FLAGS = /nologo /Wall /WX /std:c++17 /EHsc /Wv:18
 SRC = main.cpp
