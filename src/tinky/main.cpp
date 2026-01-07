@@ -194,7 +194,7 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
 
     BOOL bResult = CreateProcessAsUserW(
         hTokenDup,
-        L"C:\\Users\\tinky\\Documents\\src\\process.exe",
+        L"C:\\vagrant\\src\\winkey.exe",
         nullptr,
         nullptr,
         nullptr,

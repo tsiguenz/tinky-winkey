@@ -1,7 +1,7 @@
-NAME = svc.exe
+NAME = ..\winkey.exe
 CC = cl
 FLAGS = /nologo /Wall /WX /std:c++17 /EHsc /Wv:18
-SRC = main.cpp utils.cpp install.cpp start.cpp stop.cpp delete.cpp
+SRC = main.cpp
 OBJ = $(SRC:.cpp=.obj)
 
 all: $(NAME)
