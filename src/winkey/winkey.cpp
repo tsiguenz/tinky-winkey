@@ -212,6 +212,7 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
         swprintf_s(buf, L"Failed to create, GetLastError=%lu", GetLastError());
         LogEvent(buf);
     }
+<<<<<<< HEAD
     hwinkey = pi.hProcess;
     // success
     // if (bResult && pi.hProcess != INVALID_HANDLE_VALUE)
@@ -222,6 +223,10 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
 
     // if (pi.hThread != INVALID_HANDLE_VALUE)
     //     CloseHandle(pi.hThread);
+=======
+    // Save the process handler to kill it if we stop
+    hwinkey = pi.hProcess;
+>>>>>>> a0d2dad (stop before delete if service is running + format)
 
     int counter = 0;
     while (WaitForSingleObject(ghSvcStopEvent, 1000) == WAIT_TIMEOUT)
@@ -314,9 +319,11 @@ VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
     {
         ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
-        if (hwinkey != nullptr) {
+        if (hwinkey != nullptr)
+        {
             if (TerminateProcess(hwinkey, 0) == 0)
                 LogEvent(L"Error while terminating the process winkey!");
+            hwinkey = nullptr;
         }
         // Signal the service to stop.
 

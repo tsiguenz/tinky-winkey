@@ -2,11 +2,13 @@
 
 void Cleanup(SC_HANDLE scm, SC_HANDLE serviceHandle)
 {
-    if (scm) {
+    if (scm)
+    {
         CloseServiceHandle(scm);
         scm = nullptr;
     }
-    if (serviceHandle) {
+    if (serviceHandle)
+    {
         CloseServiceHandle(serviceHandle);
         serviceHandle = nullptr;
     }

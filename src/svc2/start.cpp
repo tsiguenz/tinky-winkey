@@ -12,16 +12,21 @@ int ActionStart(void)
     int returnValue = 0;
 
     scm = OpenSCManager(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
-    if (scm == nullptr) {
+    if (scm == nullptr)
+    {
         std::cerr << "Error while opening SCM: " << GetLastError() << std::endl;
         return 1;
     }
     serviceHandle = OpenService(scm, L"tinky", SERVICE_ALL_ACCESS);
-    if (serviceHandle == nullptr) {
+    if (serviceHandle == nullptr)
+    {
         DWORD errorCode = GetLastError();
-        if (errorCode == ERROR_SERVICE_DOES_NOT_EXIST) {
+        if (errorCode == ERROR_SERVICE_DOES_NOT_EXIST)
+        {
             std::cout << "Service does not exist!\n";
-        } else {
+        }
+        else
+        {
             std::cerr << "Error while opening the service: " << errorCode
                       << std::endl;
             returnValue = 1;
@@ -33,7 +38,8 @@ int ActionStart(void)
     // Make sure the service is not already started.
 
     if (!QueryServiceStatusEx(serviceHandle, SC_STATUS_PROCESS_INFO, (LPBYTE)&ssStatus,
-            sizeof(SERVICE_STATUS_PROCESS), &dwBytesNeeded)) {
+                              sizeof(SERVICE_STATUS_PROCESS), &dwBytesNeeded))
+    {
         std::cerr << "QueryServiceStatusEx failed: " << GetLastError() << std::endl;
         Cleanup(scm, serviceHandle);
         return 1;
@@ -41,7 +47,8 @@ int ActionStart(void)
 
     // Check if the service is already running.
 
-    if (ssStatus.dwCurrentState != SERVICE_STOPPED && ssStatus.dwCurrentState != SERVICE_STOP_PENDING) {
+    if (ssStatus.dwCurrentState != SERVICE_STOPPED && ssStatus.dwCurrentState != SERVICE_STOP_PENDING)
+    {
         std::cout << "Cannot start the service because it is already running\n";
         Cleanup(scm, serviceHandle);
         return 0;
@@ -52,7 +59,8 @@ int ActionStart(void)
     dwStartTickCount = GetTickCount();
     dwOldCheckPoint = ssStatus.dwCheckPoint;
 
-    while (ssStatus.dwCurrentState == SERVICE_STOP_PENDING) {
+    while (ssStatus.dwCurrentState == SERVICE_STOP_PENDING)
+    {
         // Do not wait longer than the wait hint. A good interval is
         // one-tenth of the wait hint but not less than 1 second
         // and not more than 10 seconds.
@@ -69,23 +77,27 @@ int ActionStart(void)
         // Check the status until the service is no longer stop pending.
 
         if (!QueryServiceStatusEx(
-                serviceHandle, // handle to service
-                SC_STATUS_PROCESS_INFO, // information level
-                (LPBYTE)&ssStatus, // address of structure
+                serviceHandle,                  // handle to service
+                SC_STATUS_PROCESS_INFO,         // information level
+                (LPBYTE)&ssStatus,              // address of structure
                 sizeof(SERVICE_STATUS_PROCESS), // size of structure
-                &dwBytesNeeded)) // size needed if buffer is too small
+                &dwBytesNeeded))                // size needed if buffer is too small
         {
             std::cerr << "QueryServiceStatusEx failed: " << GetLastError() << std::endl;
             Cleanup(scm, serviceHandle);
             return 1;
         }
 
-        if (ssStatus.dwCheckPoint > dwOldCheckPoint) {
+        if (ssStatus.dwCheckPoint > dwOldCheckPoint)
+        {
             // Continue to wait and check.
             dwStartTickCount = GetTickCount();
             dwOldCheckPoint = ssStatus.dwCheckPoint;
-        } else {
-            if (GetTickCount() - dwStartTickCount > ssStatus.dwWaitHint) {
+        }
+        else
+        {
+            if (GetTickCount() - dwStartTickCount > ssStatus.dwWaitHint)
+            {
                 printf("Timeout waiting for service to stop\n");
                 Cleanup(scm, serviceHandle);
                 return 1;
@@ -95,20 +107,22 @@ int ActionStart(void)
 
     // Attempt to start the service.
 
-    if (!StartService(serviceHandle, 0, nullptr)) {
+    if (!StartService(serviceHandle, 0, nullptr))
+    {
         std::cerr << "Fail to start the service: " << GetLastError() << std::endl;
         returnValue = 1;
-    } else
+    }
+    else
         std::cout << "Service start pending...\n";
 
     // Check the status until the service is no longer start pending.
 
     if (!QueryServiceStatusEx(
-            serviceHandle, // handle to service
-            SC_STATUS_PROCESS_INFO, // info level
-            (LPBYTE)&ssStatus, // address of structure
+            serviceHandle,                  // handle to service
+            SC_STATUS_PROCESS_INFO,         // info level
+            (LPBYTE)&ssStatus,              // address of structure
             sizeof(SERVICE_STATUS_PROCESS), // size of structure
-            &dwBytesNeeded)) // if buffer too small
+            &dwBytesNeeded))                // if buffer too small
     {
         std::cerr << "QueryServiceStatusEx failed: " << GetLastError() << std::endl;
         Cleanup(scm, serviceHandle);
@@ -120,7 +134,8 @@ int ActionStart(void)
     dwStartTickCount = GetTickCount();
     dwOldCheckPoint = ssStatus.dwCheckPoint;
 
-    while (ssStatus.dwCurrentState == SERVICE_START_PENDING) {
+    while (ssStatus.dwCurrentState == SERVICE_START_PENDING)
+    {
         // Do not wait longer than the wait hint. A good interval is
         // one-tenth the wait hint, but no less than 1 second and no
         // more than 10 seconds.
@@ -137,23 +152,27 @@ int ActionStart(void)
         // Check the status again.
 
         if (!QueryServiceStatusEx(
-                serviceHandle, // handle to service
-                SC_STATUS_PROCESS_INFO, // info level
-                (LPBYTE)&ssStatus, // address of structure
+                serviceHandle,                  // handle to service
+                SC_STATUS_PROCESS_INFO,         // info level
+                (LPBYTE)&ssStatus,              // address of structure
                 sizeof(SERVICE_STATUS_PROCESS), // size of structure
-                &dwBytesNeeded)) // if buffer too small
+                &dwBytesNeeded))                // if buffer too small
         {
             std::cerr << "QueryServiceStatusEx failed: " << GetLastError() << std::endl;
             break;
         }
 
-        if (ssStatus.dwCheckPoint > dwOldCheckPoint) {
+        if (ssStatus.dwCheckPoint > dwOldCheckPoint)
+        {
             // Continue to wait and check.
 
             dwStartTickCount = GetTickCount();
             dwOldCheckPoint = ssStatus.dwCheckPoint;
-        } else {
-            if (GetTickCount() - dwStartTickCount > ssStatus.dwWaitHint) {
+        }
+        else
+        {
+            if (GetTickCount() - dwStartTickCount > ssStatus.dwWaitHint)
+            {
                 // No progress made within the wait hint.
                 break;
             }
@@ -162,9 +181,12 @@ int ActionStart(void)
 
     // Determine whether the service is running.
 
-    if (ssStatus.dwCurrentState == SERVICE_RUNNING) {
+    if (ssStatus.dwCurrentState == SERVICE_RUNNING)
+    {
         std::cout << "Service started successfully.\n";
-    } else {
+    }
+    else
+    {
         std::cout << "Service not started. \n";
         std::cout << "  Current State: " << ssStatus.dwCurrentState << std::endl;
         std::cout << "  Exit Code: " << ssStatus.dwWin32ExitCode << std::endl;

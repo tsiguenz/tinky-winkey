@@ -32,7 +32,9 @@ int ActionDelete(void)
         Cleanup(scm, serviceHandle);
         return returnValue;
     }
-    // Check if service is running
+
+    // Make sure the service is stopped
+
     if (!QueryServiceStatusEx(serviceHandle, SC_STATUS_PROCESS_INFO, (LPBYTE)&ssp,
                               sizeof(SERVICE_STATUS_PROCESS), &dwBytesNeeded))
     {
@@ -42,7 +44,14 @@ int ActionDelete(void)
     }
 
     if (ssp.dwCurrentState == SERVICE_RUNNING)
-        ActionStop();
+    {
+        std::cout << "Service is running!\n";
+        if (ActionStop() == 1)
+        {
+            Cleanup(scm, serviceHandle);
+            return 1;
+        }
+    }
 
     if (!DeleteService(serviceHandle))
     {
