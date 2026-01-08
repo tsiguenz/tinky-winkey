@@ -1,6 +1,6 @@
 NAME = C:\Windows\Temp\winkey.exe
 CC = cl
-FLAGS = /nologo /Wall /WX /std:c++17 /EHsc /Wv:18
+FLAGS = /nologo /Wall /WX /std:c++17 /EHsc /Wv:18 /DBONUS
 SRC = main.cpp
 OBJ = $(SRC:.cpp=.obj)
 
