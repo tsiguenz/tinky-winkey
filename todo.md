@@ -7,9 +7,10 @@
         - Keystroke in human readable format accordingly to the current locale identifier
 
 2. Refactor entire code
-    - use more cpp
-        - use strings
-        - remove c open
+    - [x] use more cpp
+        - [x] use strings
+        - [x] remove c open
+    - [x] change path to work everywhere
 
 3. Create Vagrantfile to deploy Windows 11 VM
     - `gusztavvargadr/windows-11`

