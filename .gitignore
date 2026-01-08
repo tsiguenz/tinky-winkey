@@ -1,3 +1,4 @@
 .vagrant
 *.obj
 *.exe
+.vscode

