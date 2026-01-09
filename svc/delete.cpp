@@ -6,7 +6,6 @@ int ActionDelete(void)
     SC_HANDLE serviceHandle = nullptr;
     SERVICE_STATUS_PROCESS ssp;
     DWORD dwBytesNeeded;
-    (void)ssp; // TODO: remove
     int returnValue = 0;
 
     scm = OpenSCManager(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
@@ -34,7 +33,7 @@ int ActionDelete(void)
     }
 
     // Make sure the service is stopped
-
+    //
     if (!QueryServiceStatusEx(serviceHandle, SC_STATUS_PROCESS_INFO, (LPBYTE)&ssp,
                               sizeof(SERVICE_STATUS_PROCESS), &dwBytesNeeded))
     {

