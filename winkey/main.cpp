@@ -106,24 +106,6 @@ FILE *OpenLogFile()
     return f;
 }
 
-// void LogEvent(const std::wstring &message)
-// {
-//     std::wstring logPath = L"C:\\Windows\\Temp\\winkey.log";
-
-//     std::wofstream file(logPath, std::ios::app);
-//     if (!file)
-//     {
-//         std::wstring buf =
-//             L"Failed to open log file: " + logPath +
-//             L", GetLastError=" + std::to_wstring(GetLastError());
-
-//         OutputDebugStringW(buf.c_str());
-//         return;
-//     }
-
-//     file << message << L'\n';
-// }
-
 std::wstring FormatTimestamp(const SYSTEMTIME &st)
 {
     wchar_t buffer[64];
